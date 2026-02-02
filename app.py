@@ -4,29 +4,26 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
 import os
 
-from models import db   # import database
+from models import db, Playlist, Track
 
-# Load environment variables
 load_dotenv()
 
-# Create Flask app
 app = Flask(__name__)
 
-# ---------------- DATABASE CONFIG (HERE ✅) ----------------
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///playlist.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    "DATABASE_URL", "sqlite:///playlist.db"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
 with app.app_context():
     db.create_all()
-# -----------------------------------------------------------
 
-# Spotify Authentication
 spotify = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
-        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
+        client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+        client_secret=os.getenv("SPOTIPY_CLIENT_SECRET")
     )
 )
 
@@ -44,20 +41,18 @@ def get_tracks_by_genre(genre, limit=10):
 
 @app.route('/generate_playlist', methods=['POST'])
 def generate_playlist():
-    data = request.json
-    genre = data.get("genre")
+    data = request.get_json()
+    genre = data.get("genre") if data else None
 
     if not genre:
         return jsonify({"error": "Genre is required"}), 400
 
     spotify_tracks = get_tracks_by_genre(genre)
 
-    # Save playlist
     playlist = Playlist(genre=genre)
     db.session.add(playlist)
     db.session.commit()
 
-    # Save tracks
     for t in spotify_tracks:
         track = Track(
             song_name=t["song"],
@@ -74,4 +69,5 @@ def generate_playlist():
         "genre": genre,
         "tracks": spotify_tracks
     })
+
 
