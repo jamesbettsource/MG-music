@@ -2,17 +2,25 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), nullable=False)
-
 class Playlist(db.Model):
+    __tablename__ = "playlists"
+
     id = db.Column(db.Integer, primary_key=True)
-    genre = db.Column(db.String(50))
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    genre = db.Column(db.String(100), nullable=False)
+
+    tracks = db.relationship("Track", backref="playlist", lazy=True)
+
 
 class Track(db.Model):
+    __tablename__ = "tracks"
+
     id = db.Column(db.Integer, primary_key=True)
-    song = db.Column(db.String(200))
-    artist = db.Column(db.String(200))
-    playlist_id = db.Column(db.Integer, db.ForeignKey('playlist.id'))
+    song_name = db.Column(db.String(200), nullable=False)
+    artist = db.Column(db.String(200), nullable=False)
+    spotify_link = db.Column(db.String(300), nullable=False)
+
+    playlist_id = db.Column(
+        db.Integer,
+        db.ForeignKey("playlists.id"),
+        nullable=False
+    )
