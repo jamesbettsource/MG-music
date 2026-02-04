@@ -9,14 +9,21 @@ from models import db, Playlist, Track
 def create_app():
     app = Flask(__name__)
 
-    # ---- DATABASE CONFIG ----
+    # ---- DATABASE CONFIG (RENDER SAFE) ----
     database_url = os.getenv("DATABASE_URL")
+
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    # Render sometimes provides postgres://
+    # Force psycopg v3 (important!)
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        database_url = database_url.replace(
+            "postgres://", "postgresql+psycopg://", 1
+        )
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://", "postgresql+psycopg://", 1
+        )
 
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -33,7 +40,7 @@ app = create_app()
 spotify = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIPY_CLIENT_SECRET")
+        client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
     )
 )
 
@@ -46,7 +53,7 @@ def get_tracks_by_genre(genre, limit=10):
         tracks.append({
             "song": item["name"],
             "artist": item["artists"][0]["name"],
-            "link": item["external_urls"]["spotify"]
+            "link": item["external_urls"]["spotify"],
         })
 
     return tracks
@@ -71,7 +78,7 @@ def generate_playlist():
             song_name=t["song"],
             artist=t["artist"],
             spotify_link=t["link"],
-            playlist_id=playlist.id
+            playlist_id=playlist.id,
         )
         db.session.add(track)
 
@@ -80,8 +87,9 @@ def generate_playlist():
     return jsonify({
         "playlist_id": playlist.id,
         "genre": genre,
-        "tracks": spotify_tracks
+        "tracks": spotify_tracks,
     })
+
 
 
 
