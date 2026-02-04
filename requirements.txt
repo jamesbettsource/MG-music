@@ -4,4 +4,5 @@ gunicorn
 spotipy
 python-dotenv
 psycopg[binary]
+flask-cors
 
