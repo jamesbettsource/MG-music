@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
@@ -9,13 +10,15 @@ from models import db, Playlist, Track
 def create_app():
     app = Flask(__name__)
 
-    # ---- DATABASE CONFIG (RENDER SAFE) ----
+    CORS(app)
+    # -----------------------------
+    # DATABASE CONFIG (RENDER SAFE)
+    # -----------------------------
     database_url = os.getenv("DATABASE_URL")
-
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    # Force psycopg v3 (important!)
+    # Force psycopg v3
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://", "postgresql+psycopg://", 1
@@ -28,7 +31,11 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    # -----------------------------
+    # INIT EXTENSIONS
+    # -----------------------------
     db.init_app(app)
+    CORS(app)  # allows frontend to call backend
 
     return app
 
@@ -36,7 +43,9 @@ def create_app():
 app = create_app()
 
 
-# ---- SPOTIFY CLIENT ----
+# -----------------------------
+# SPOTIFY CLIENT
+# -----------------------------
 spotify = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
@@ -57,6 +66,18 @@ def get_tracks_by_genre(genre, limit=10):
         })
 
     return tracks
+
+
+# -----------------------------
+# ROUTES
+# -----------------------------
+
+@app.route("/", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "ok",
+        "service": "MG Music API"
+    })
 
 
 @app.route("/generate_playlist", methods=["POST"])
@@ -88,7 +109,8 @@ def generate_playlist():
         "playlist_id": playlist.id,
         "genre": genre,
         "tracks": spotify_tracks,
-    })
+    }), 201
+
 
 
 
