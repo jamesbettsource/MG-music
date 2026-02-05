@@ -5,4 +5,5 @@ spotipy
 python-dotenv
 psycopg[binary]
 flask-cors
+flask-jwt-extended
 
