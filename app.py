@@ -1,51 +1,45 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
+from flask_jwt_extended import (
+    JWTManager, create_access_token, jwt_required, get_jwt_identity
+)
 from flask_cors import CORS
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
 
-from models import db, Playlist, Track
+from models import db, User, Playlist, Track
 
 
 def create_app():
     app = Flask(__name__)
-
     CORS(app)
-    # -----------------------------
-    # DATABASE CONFIG (RENDER SAFE)
-    # -----------------------------
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is not set")
 
-    # Force psycopg v3
+    # ---- DATABASE ----
+    database_url = os.getenv("DATABASE_URL")
+
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://", "postgresql+psycopg://", 1
-        )
-    elif database_url.startswith("postgresql://"):
-        database_url = database_url.replace(
-            "postgresql://", "postgresql+psycopg://", 1
         )
 
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # -----------------------------
-    # INIT EXTENSIONS
-    # -----------------------------
+    # ---- JWT ----
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+
     db.init_app(app)
-    CORS(app)  # allows frontend to call backend
+    JWTManager(app)
+
+    with app.app_context():
+        db.create_all()
 
     return app
 
 
 app = create_app()
 
-
-# -----------------------------
-# SPOTIFY CLIENT
-# -----------------------------
+# ---- SPOTIFY ----
 spotify = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
         client_id=os.getenv("SPOTIPY_CLIENT_ID"),
@@ -54,62 +48,86 @@ spotify = spotipy.Spotify(
 )
 
 
-def get_tracks_by_genre(genre, limit=10):
-    results = spotify.search(q=f"genre:{genre}", type="track", limit=limit)
-
-    tracks = []
-    for item in results["tracks"]["items"]:
-        tracks.append({
-            "song": item["name"],
-            "artist": item["artists"][0]["name"],
-            "link": item["external_urls"]["spotify"],
-        })
-
-    return tracks
+# ---------- FRONTEND ----------
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 
-# -----------------------------
-# ROUTES
-# -----------------------------
-
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "ok",
-        "service": "MG Music API"
-    })
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
 
 
-@app.route("/generate_playlist", methods=["POST"])
-def generate_playlist():
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+
+# ---------- AUTH ----------
+@app.route("/api/register", methods=["POST"])
+def register():
     data = request.get_json()
-    genre = data.get("genre") if data else None
+    email = data.get("email")
+    password = data.get("password")
 
-    if not genre:
-        return jsonify({"error": "Genre is required"}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "User exists"}), 400
 
-    spotify_tracks = get_tracks_by_genre(genre)
+    user = User(email=email)
+    user.set_password(password)
 
-    playlist = Playlist(genre=genre)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"message": "User created"})
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    user = User.query.filter_by(email=data.get("email")).first()
+
+    if not user or not user.check_password(data.get("password")):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    token = create_access_token(identity=user.id)
+    return jsonify({"access_token": token})
+
+
+# ---------- PLAYLIST ----------
+@app.route("/api/generate_playlist", methods=["POST"])
+@jwt_required()
+def generate_playlist():
+    user_id = get_jwt_identity()
+    genre = request.json.get("genre")
+
+    results = spotify.search(q=f"genre:{genre}", type="track", limit=10)
+
+    playlist = Playlist(genre=genre, user_id=user_id)
     db.session.add(playlist)
     db.session.commit()
 
-    for t in spotify_tracks:
+    tracks = []
+    for item in results["tracks"]["items"]:
         track = Track(
-            song_name=t["song"],
-            artist=t["artist"],
-            spotify_link=t["link"],
+            song_name=item["name"],
+            artist=item["artists"][0]["name"],
+            spotify_link=item["external_urls"]["spotify"],
             playlist_id=playlist.id,
         )
         db.session.add(track)
+        tracks.append({
+            "song": track.song_name,
+            "artist": track.artist,
+            "link": track.spotify_link,
+        })
 
     db.session.commit()
 
-    return jsonify({
-        "playlist_id": playlist.id,
-        "genre": genre,
-        "tracks": spotify_tracks,
-    }), 201
+    return jsonify({"genre": genre, "tracks": tracks})
+
+
 
 
 
