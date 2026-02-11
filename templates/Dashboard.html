@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h2>Dashboard</h2>
+
+    {% if token %}
+        <p><strong>Your JWT token:</strong></p>
+        <textarea rows="6" cols="80">{{ token }}</textarea>
+    {% endif %}
+
+    <p>Welcome to MG Music 🎧</p>
+</body>
+</html>
+
