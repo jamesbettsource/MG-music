@@ -7,17 +7,13 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 import os
-
 from models import db, User
 
 
 def create_app():
     app = Flask(__name__)
 
-    # Allow your React frontend (Netlify) to talk to backend
     CORS(app)
-
-    # ---------------- CONFIG ----------------
 
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
     app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "jwt-secret")
@@ -26,7 +22,6 @@ def create_app():
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    # Fix Render Postgres URL format
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://",
@@ -43,16 +38,13 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-    # ---------------- ROOT ----------------
-
     @app.route("/")
     def index():
-        return jsonify(
-            service="mg-music-backend",
-            status="running"
-        )
+        return jsonify(service="mg-music-backend", status="running")
 
-    # ---------------- AUTH API ----------------
+    @app.route("/api/health")
+    def health():
+        return jsonify(status="ok")
 
     @app.route("/api/login", methods=["POST"])
     def login():
@@ -73,7 +65,6 @@ def create_app():
             return jsonify(error="Invalid credentials"), 401
 
         token = create_access_token(identity=str(user.id))
-
         return jsonify(access_token=token)
 
     @app.route("/api/register", methods=["POST"])
@@ -100,7 +91,10 @@ def create_app():
 
         return jsonify(message="User registered successfully"), 201
 
-    # ---------------- PROTECTED API ----------------
+    @app.route("/api/debug/db")
+    def db_test():
+        users = User.query.all()
+        return jsonify(count=len(users))
 
     @app.route("/api/songs", methods=["POST"])
     @jwt_required()
@@ -109,7 +103,6 @@ def create_app():
         data = request.get_json()
 
         genre = data.get("genre") if data else None
-
         if not genre:
             return jsonify(error="Genre is required"), 400
 
@@ -122,12 +115,6 @@ def create_app():
                 f"{genre} Night Session"
             ]
         )
-
-    # ---------------- HEALTH ----------------
-
-    @app.route("/api/health")
-    def health():
-        return jsonify(status="ok")
 
     return app
 
