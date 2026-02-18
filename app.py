@@ -7,14 +7,22 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 import os
+
 from models import db, User
 
 
 def create_app():
     app = Flask(__name__)
 
-    CORS(app)
+    # ---------------- CORS (CRITICAL FIX) ----------------
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "*"}},
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "OPTIONS"]
+    )
 
+    # ---------------- CONFIG ----------------
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
     app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "jwt-secret")
 
@@ -22,6 +30,7 @@ def create_app():
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
+    # Fix Render Postgres URL
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://",
@@ -38,12 +47,15 @@ def create_app():
     with app.app_context():
         db.create_all()
 
+    # ---------------- ROOT ----------------
     @app.route("/")
     def index():
-        return jsonify(service="mg-music-backend", status="running")
+        return jsonify(
+            service="mg-music-backend",
+            status="running"
+        )
 
-    # ---------- AUTH ----------
-
+    # ---------------- AUTH ----------------
     @app.route("/api/register", methods=["POST"])
     def register():
         data = request.get_json()
@@ -87,30 +99,38 @@ def create_app():
             return jsonify(error="Invalid credentials"), 401
 
         token = create_access_token(identity=str(user.id))
+
         return jsonify(access_token=token), 200
 
-    # ---------- SONGS ----------
-
+    # ---------------- PROTECTED ----------------
     @app.route("/api/songs", methods=["POST"])
     @jwt_required()
-    def songs():
+    def get_songs():
+        user_id = get_jwt_identity()
         data = request.get_json()
-        genre = data.get("genre") if data else None
+
+        if not data:
+            return jsonify(error="Missing JSON body"), 400
+
+        genre = data.get("genre")
 
         if not genre:
             return jsonify(error="Genre is required"), 400
 
         return jsonify(
+            user_id=user_id,
+            genre=genre,
             songs=[
                 f"{genre} Anthem",
                 f"{genre} Vibes",
                 f"{genre} Night Session"
             ]
-        )
+        ), 200
 
+    # ---------------- HEALTH ----------------
     @app.route("/api/health")
     def health():
-        return jsonify(status="ok")
+        return jsonify(status="ok"), 200
 
     return app
 
