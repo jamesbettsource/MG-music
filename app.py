@@ -14,7 +14,7 @@ from models import db, User
 def create_app():
     app = Flask(__name__)
 
-    # ---------------- CORS (CRITICAL FIX) ----------------
+    # ---------------- CORS ----------------
     CORS(
         app,
         resources={r"/api/*": {"origins": "*"}},
@@ -30,7 +30,6 @@ def create_app():
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    # Fix Render Postgres URL
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://",
@@ -47,13 +46,26 @@ def create_app():
     with app.app_context():
         db.create_all()
 
+    # ---------------- HANDLE OPTIONS GLOBALLY ----------------
+    @app.before_request
+    def handle_options():
+        if request.method == "OPTIONS":
+            response = jsonify({"status": "ok"})
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            response.headers.add(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization"
+            )
+            response.headers.add(
+                "Access-Control-Allow-Methods",
+                "GET, POST, OPTIONS"
+            )
+            return response, 200
+
     # ---------------- ROOT ----------------
     @app.route("/")
     def index():
-        return jsonify(
-            service="mg-music-backend",
-            status="running"
-        )
+        return jsonify(service="mg-music-backend", status="running")
 
     # ---------------- AUTH ----------------
     @app.route("/api/register", methods=["POST"])
@@ -99,21 +111,19 @@ def create_app():
             return jsonify(error="Invalid credentials"), 401
 
         token = create_access_token(identity=str(user.id))
-
         return jsonify(access_token=token), 200
 
-    # ---------------- PROTECTED ----------------
+    # ---------------- SONGS (JWT SAFE) ----------------
     @app.route("/api/songs", methods=["POST"])
     @jwt_required()
     def get_songs():
-        user_id = get_jwt_identity()
         data = request.get_json()
+        user_id = get_jwt_identity()
 
         if not data:
             return jsonify(error="Missing JSON body"), 400
 
         genre = data.get("genre")
-
         if not genre:
             return jsonify(error="Genre is required"), 400
 
